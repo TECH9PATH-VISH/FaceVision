@@ -400,18 +400,41 @@ btnRecord.addEventListener('click', () => {
     }
 });
 
+let recordingCanvas = document.createElement('canvas');
+let recCtx = recordingCanvas.getContext('2d');
+
+function renderRecordingFrame() {
+    if (!isRecording) return;
+    // Draw the raw camera feed first
+    recCtx.drawImage(video, 0, 0, recordingCanvas.width, recordingCanvas.height);
+    // Draw the transparent canvas with the HUD and tracking boxes on top
+    recCtx.drawImage(canvas, 0, 0, recordingCanvas.width, recordingCanvas.height);
+    
+    requestAnimationFrame(renderRecordingFrame);
+}
+
 function startRecording() {
-    const stream = video.srcObject;
-    if (!stream) {
+    if (!video.srcObject) {
         alert("Camera stream not available.");
         return;
     }
     
+    // Match dimensions
+    recordingCanvas.width = canvas.width;
+    recordingCanvas.height = canvas.height;
+    
+    // Capture the composite canvas at 30 FPS
+    const stream = recordingCanvas.captureStream(30);
+    
     recordedChunks = [];
     try {
-        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9' });
     } catch (e) {
-        mediaRecorder = new MediaRecorder(stream); // Fallback
+        try {
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        } catch (e2) {
+            mediaRecorder = new MediaRecorder(stream); // Fallback
+        }
     }
     
     mediaRecorder.ondataavailable = (event) => {
@@ -434,6 +457,9 @@ function startRecording() {
     
     mediaRecorder.start();
     isRecording = true;
+    
+    // Start the render loop to feed frames to the media recorder
+    requestAnimationFrame(renderRecordingFrame);
     
     btnRecord.classList.add('recording');
     recordText.textContent = 'Stop Recording';
