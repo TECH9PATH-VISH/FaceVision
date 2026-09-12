@@ -274,16 +274,21 @@ let sendsInLastSecond = 0;
 let lastFpsUpdate = Date.now();
 
 function sendTrackingData(offsetX) {
-    if (!socket || socket.readyState !== WebSocket.OPEN) return;
-
     const now = Date.now();
+    
+    // Check if it's time to send (throttling to SEND_INTERVAL_MS)
     if (now - lastSendTime >= SEND_INTERVAL_MS) {
-        const payload = JSON.stringify({ target_x: offsetX });
-        socket.send(payload);
+        // Only actually send if connected
+        if (socket && socket.readyState === WebSocket.OPEN) {
+            const payload = JSON.stringify({ target_x: offsetX });
+            socket.send(payload);
+        }
+        
         lastSendTime = now;
-        sendsInLastSecond++;
+        sendsInLastSecond++; // Increment telemetry even if disconnected to show loop is active
     }
 
+    // Update telemetry FPS every second
     if (now - lastFpsUpdate >= 1000) {
         telemetryFps.textContent = `${sendsInLastSecond} Hz`;
         sendsInLastSecond = 0;
