@@ -84,6 +84,26 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Debugging Dashboard -->
+                <div class="panel-section advanced-panel">
+                    <h2>Advanced Settings</h2>
+                    
+                    <div class="slider-group">
+                        <label for="throttle-slider">Throttle Rate: <span id="throttle-val" class="data-value">100</span>ms</label>
+                        <input type="range" id="throttle-slider" min="20" max="500" value="100" step="10">
+                    </div>
+
+                    <div class="slider-group">
+                        <label for="deadzone-slider">Deadzone: <span id="deadzone-val" class="data-value">10</span>%</label>
+                        <input type="range" id="deadzone-slider" min="0" max="30" value="10" step="1">
+                    </div>
+
+                    <div class="log-container">
+                        <h3>Payload History</h3>
+                        <div id="ws-logs"></div>
+                    </div>
+                </div>
             </aside>
         </main>
     </div>

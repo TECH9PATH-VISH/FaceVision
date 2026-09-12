@@ -14,20 +14,43 @@ const modeDesc = document.getElementById('mode-desc');
 const telemetryX = document.getElementById('telemetry-x');
 const telemetryFps = document.getElementById('telemetry-fps');
 
+// Advanced UI Elements
+const throttleSlider = document.getElementById('throttle-slider');
+const throttleVal = document.getElementById('throttle-val');
+const deadzoneSlider = document.getElementById('deadzone-slider');
+const deadzoneVal = document.getElementById('deadzone-val');
+const wsLogs = document.getElementById('ws-logs');
+
 // State Variables
 let socket = null;
 let objectModel = null;
-let lockedBox = null; // null means Mode B (Nearest), otherwise [x, y, w, h] for Mode A
+let lockedBox = null; 
 let lastSendTime = 0;
-const SEND_INTERVAL_MS = 100; // ~10 FPS
 let mediaRecorder = null;
 let recordedChunks = [];
 let isRecording = false;
+
+// Advanced Features State
+let sendIntervalMs = parseInt(throttleSlider.value);
+let deadzonePct = parseInt(deadzoneSlider.value);
+let xHistory = [];
+let lastDetectionTime = Date.now();
+let hasSentLostTarget = false;
 
 // Colors
 const COLOR_DETECTED = '#3b82f6';
 const COLOR_NEAREST = '#eab308';
 const COLOR_LOCKED = '#22c55e';
+
+// Advanced Setting Listeners
+throttleSlider.addEventListener('input', (e) => {
+    sendIntervalMs = parseInt(e.target.value);
+    throttleVal.textContent = sendIntervalMs;
+});
+deadzoneSlider.addEventListener('input', (e) => {
+    deadzonePct = parseInt(e.target.value);
+    deadzoneVal.textContent = deadzonePct;
+});
 
 // Initialize
 async function init() {
@@ -88,6 +111,33 @@ function getIoU(box1, box2) {
     return interArea / (box1Area + box2Area - interArea);
 }
 
+// HUD Drawing Helpers
+function drawCrosshair(ctx) {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cx - 20, cy);
+    ctx.lineTo(cx + 20, cy);
+    ctx.moveTo(cx, cy - 20);
+    ctx.lineTo(cx, cy + 20);
+    ctx.stroke();
+}
+
+function drawTargetLine(ctx, targetCenterX, targetCenterY, color) {
+    const cx = canvas.width / 2;
+    const cy = canvas.height / 2;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.setLineDash([5, 5]);
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(targetCenterX, targetCenterY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
 // 3. Detection & Tracking Loop
 async function detectLoop() {
     if (!objectModel) return;
@@ -99,10 +149,16 @@ async function detectLoop() {
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    const now = Date.now();
+    drawCrosshair(ctx);
+
     let targetBox = null;
     let targetColor = COLOR_DETECTED;
 
     if (people.length > 0) {
+        lastDetectionTime = now;
+        hasSentLostTarget = false;
+
         if (lockedBox) {
             // MODE A: Locked Mode (Spatial Tracking via IoU)
             let bestMatchBox = null;
@@ -154,14 +210,38 @@ async function detectLoop() {
             });
         }
 
-        // Calculate offset and send data
+        // Calculate offset, smooth, and send data
         if (targetBox) {
             const centerX = targetBox[0] + (targetBox[2] / 2);
+            const centerY = targetBox[1] + (targetBox[3] / 2);
             const videoCenterX = canvas.width / 2;
-            const offsetX = Math.round(centerX - videoCenterX); // Positive = target is to the right
             
-            sendTrackingData(offsetX);
+            drawTargetLine(ctx, centerX, centerY, targetColor);
+
+            // Smoothing (Moving Average)
+            xHistory.push(centerX);
+            if (xHistory.length > 3) xHistory.shift();
+            const smoothedCenterX = xHistory.reduce((a, b) => a + b, 0) / xHistory.length;
+            
+            let offsetX = Math.round(smoothedCenterX - videoCenterX);
+            
+            // Deadzone Logic
+            const deadzonePx = (canvas.width * (deadzonePct / 100)) / 2;
+            if (Math.abs(offsetX) <= deadzonePx) {
+                offsetX = 0;
+            }
+            
+            sendTrackingData({ target_x: offsetX });
             telemetryX.textContent = `${offsetX} px`;
+        }
+    } else {
+        // No people detected
+        xHistory = [];
+        
+        // Lost Target Protocol (3 seconds)
+        if (!hasSentLostTarget && (now - lastDetectionTime > 3000)) {
+            sendTrackingData({ status: "search", x_offset: 0 });
+            hasSentLostTarget = true;
         }
     }
 
@@ -224,7 +304,7 @@ btnClearLock.addEventListener('click', () => {
     btnClearLock.disabled = true;
 });
 
-// 5. WebSocket Integration
+// 5. WebSocket Integration & Payload Logging
 btnConnect.addEventListener('click', () => {
     if (socket && socket.readyState === WebSocket.OPEN) {
         socket.close();
@@ -273,17 +353,20 @@ btnConnect.addEventListener('click', () => {
 let sendsInLastSecond = 0;
 let lastFpsUpdate = Date.now();
 
-function sendTrackingData(offsetX) {
+function sendTrackingData(payloadObj) {
     const now = Date.now();
     
-    // Check if it's time to send (throttling to SEND_INTERVAL_MS)
-    if (now - lastSendTime >= SEND_INTERVAL_MS) {
+    // Check if it's time to send (throttling)
+    if (now - lastSendTime >= sendIntervalMs) {
+        const payloadStr = JSON.stringify(payloadObj);
+
         // Only actually send if connected
         if (socket && socket.readyState === WebSocket.OPEN) {
-            const payload = JSON.stringify({ target_x: offsetX });
-            socket.send(payload);
+            socket.send(payloadStr);
         }
         
+        logPayload(payloadStr);
+
         lastSendTime = now;
         sendsInLastSecond++; // Increment telemetry even if disconnected to show loop is active
     }
@@ -293,6 +376,18 @@ function sendTrackingData(offsetX) {
         telemetryFps.textContent = `${sendsInLastSecond} Hz`;
         sendsInLastSecond = 0;
         lastFpsUpdate = now;
+    }
+}
+
+function logPayload(payloadStr) {
+    const entry = document.createElement('div');
+    entry.className = 'log-entry';
+    entry.textContent = `> ${payloadStr}`;
+    wsLogs.insertBefore(entry, wsLogs.firstChild);
+    
+    // Keep only last 5
+    while (wsLogs.children.length > 5) {
+        wsLogs.removeChild(wsLogs.lastChild);
     }
 }
 
