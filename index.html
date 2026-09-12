@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FaceVision | Face Tracking</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- face-api.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/@vladmandic/face-api/dist/face-api.min.js"></script>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header / Logo -->
+        <header>
+            <div class="logo">
+                <span class="icon">👁️</span>
+                <h1>Face<span>Vision</span></h1>
+            </div>
+            <p class="subtitle">AI-Powered Face Tracking & Hardware Sync</p>
+        </header>
+
+        <!-- Main Content -->
+        <main>
+            <!-- Camera & Canvas Area -->
+            <section class="camera-section">
+                <div class="camera-wrapper">
+                    <!-- Overlay canvas perfectly aligned with video -->
+                    <video id="webcam" autoplay muted playsinline></video>
+                    <canvas id="overlay"></canvas>
+                    <div id="loading" class="loading-overlay">
+                        <div class="spinner"></div>
+                        <p>Loading AI Models...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Control Panel -->
+            <aside class="control-panel glass-panel">
+                <!-- WebSocket Connection -->
+                <div class="panel-section">
+                    <h2>Connection</h2>
+                    <div class="input-group">
+                        <input type="text" id="ws-url" value="ws://192.168.1.100:81" placeholder="ws://ESP8266_IP:PORT">
+                        <button id="btn-connect" class="btn primary">Connect</button>
+                    </div>
+                    <div class="status-indicator">
+                        <span id="ws-status-dot" class="dot disconnected"></span>
+                        <span id="ws-status-text">Disconnected</span>
+                    </div>
+                </div>
+
+                <!-- Tracking Modes -->
+                <div class="panel-section">
+                    <h2>Tracking Mode</h2>
+                    <div class="mode-info">
+                        <span id="current-mode" class="mode-badge mode-b">Nearest (Mode B)</span>
+                        <p id="mode-desc">Tracking the closest person. Click any bounding box to lock onto a target.</p>
+                    </div>
+                    <button id="btn-clear-lock" class="btn secondary" disabled>Clear Target Lock</button>
+                </div>
+
+                <!-- Live Data -->
+                <div class="panel-section">
+                    <h2>Live Telemetry</h2>
+                    <div class="telemetry-box">
+                        <div class="data-row">
+                            <span>Target X Offset:</span>
+                            <span id="telemetry-x" class="data-value">0 px</span>
+                        </div>
+                        <div class="data-row">
+                            <span>Send Rate:</span>
+                            <span id="telemetry-fps" class="data-value">0 Hz</span>
+                        </div>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>

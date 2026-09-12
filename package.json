@@ -1,0 +1,12 @@
+{
+  "name": "facevision",
+  "version": "1.0.0",
+  "description": "Face tracking with WebSockets and ESP8266",
+  "main": "index.js",
+  "scripts": {
+    "start": "serve ."
+  },
+  "dependencies": {
+    "serve": "^14.2.1"
+  }
+}
