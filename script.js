@@ -140,7 +140,21 @@ function drawTargetLine(ctx, targetCenterX, targetCenterY, color) {
 async function detectLoop() {
     if (!objectModel) return;
 
-    const predictions = await objectModel.detect(video);
+    // Safety check: Prevent TFJS crash if webcam frames aren't fully initialized
+    if (video.readyState < 2 || video.videoWidth === 0) {
+        requestAnimationFrame(() => detectLoop());
+        return;
+    }
+
+    let predictions = [];
+    try {
+        predictions = await objectModel.detect(video);
+    } catch (e) {
+        console.error("TFJS Detection Error:", e);
+        requestAnimationFrame(() => detectLoop());
+        return;
+    }
+
     // Filter to only track people
     const people = predictions.filter(p => p.class === 'person');
     
