@@ -142,6 +142,21 @@ canvas {
     flex-direction: column;
     gap: 30px;
     border-radius: 20px;
+    overflow-y: auto;
+    max-height: 100%;
+}
+
+/* Custom Scrollbar for Control Panel */
+.control-panel::-webkit-scrollbar {
+    width: 6px;
+}
+.control-panel::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+}
+.control-panel::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
 }
 
 .glass-panel {
