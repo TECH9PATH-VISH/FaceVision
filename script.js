@@ -57,12 +57,10 @@ async function init() {
     await setupWebcam();
     await loadModels();
     
-    // Resize canvas to match video
-    video.addEventListener('play', () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        requestAnimationFrame(() => detectLoop());
-    });
+    // The video is already playing by the time models load, so we set dimensions and start immediately
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    requestAnimationFrame(() => detectLoop());
 }
 
 // 1. Webcam Setup
