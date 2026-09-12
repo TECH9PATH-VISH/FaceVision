@@ -7,6 +7,8 @@ const btnConnect = document.getElementById('btn-connect');
 const btnClearLock = document.getElementById('btn-clear-lock');
 const wsStatusDot = document.getElementById('ws-status-dot');
 const wsStatusText = document.getElementById('ws-status-text');
+const btnRecord = document.getElementById('btn-record');
+const recordText = document.getElementById('record-text');
 const currentModeBadge = document.getElementById('current-mode');
 const modeDesc = document.getElementById('mode-desc');
 const telemetryX = document.getElementById('telemetry-x');
@@ -18,6 +20,9 @@ let isModelsLoaded = false;
 let lockedFaceDescriptor = null; // null means Mode B (Nearest), otherwise Mode A (Locked)
 let lastSendTime = 0;
 const SEND_INTERVAL_MS = 100; // ~10 FPS
+let mediaRecorder = null;
+let recordedChunks = [];
+let isRecording = false;
 
 // Colors
 const COLOR_DETECTED = '#3b82f6';
@@ -284,6 +289,64 @@ function sendTrackingData(offsetX) {
         sendsInLastSecond = 0;
         lastFpsUpdate = now;
     }
+}
+
+// 6. Camera Recording
+btnRecord.addEventListener('click', () => {
+    if (!isRecording) {
+        startRecording();
+    } else {
+        stopRecording();
+    }
+});
+
+function startRecording() {
+    const stream = video.srcObject;
+    if (!stream) {
+        alert("Camera stream not available.");
+        return;
+    }
+    
+    recordedChunks = [];
+    try {
+        mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    } catch (e) {
+        mediaRecorder = new MediaRecorder(stream); // Fallback
+    }
+    
+    mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+            recordedChunks.push(event.data);
+        }
+    };
+    
+    mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunks, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = `facevision_recording_${new Date().getTime()}.webm`;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+    };
+    
+    mediaRecorder.start();
+    isRecording = true;
+    
+    btnRecord.classList.add('recording');
+    recordText.textContent = 'Stop Recording';
+}
+
+function stopRecording() {
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+        mediaRecorder.stop();
+    }
+    isRecording = false;
+    
+    btnRecord.classList.remove('recording');
+    recordText.textContent = 'Start Recording';
 }
 
 // Start
