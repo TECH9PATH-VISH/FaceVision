@@ -16,8 +16,8 @@ const telemetryFps = document.getElementById('telemetry-fps');
 
 // State Variables
 let socket = null;
-let isModelsLoaded = false;
-let lockedFaceDescriptor = null; // null means Mode B (Nearest), otherwise Mode A (Locked)
+let objectModel = null;
+let lockedBox = null; // null means Mode B (Nearest), otherwise [x, y, w, h] for Mode A
 let lastSendTime = 0;
 const SEND_INTERVAL_MS = 100; // ~10 FPS
 let mediaRecorder = null;
@@ -36,9 +36,9 @@ async function init() {
     
     // Resize canvas to match video
     video.addEventListener('play', () => {
-        const displaySize = { width: video.videoWidth, height: video.videoHeight };
-        faceapi.matchDimensions(canvas, displaySize);
-        requestAnimationFrame(() => detectLoop(displaySize));
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        requestAnimationFrame(() => detectLoop());
     });
 }
 
@@ -51,11 +51,8 @@ async function setupWebcam() {
         });
         video.srcObject = stream;
         
-        // Wait for video to be ready
         return new Promise((resolve) => {
-            video.onloadedmetadata = () => {
-                resolve(video);
-            };
+            video.onloadedmetadata = () => resolve(video);
         });
     } catch (err) {
         console.error("Error accessing webcam:", err);
@@ -63,71 +60,81 @@ async function setupWebcam() {
     }
 }
 
-// 2. Load face-api.js models
+// 2. Load COCO-SSD model
 async function loadModels() {
-    const MODEL_URL = './models';
     try {
-        await Promise.all([
-            faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
-            faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-            faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
-        ]);
-        isModelsLoaded = true;
+        objectModel = await cocoSsd.load();
         loadingOverlay.style.opacity = '0';
         setTimeout(() => loadingOverlay.style.display = 'none', 300);
-        console.log("Models loaded successfully");
+        console.log("COCO-SSD loaded successfully");
     } catch (err) {
-        console.error("Error loading models:", err);
-        alert("Failed to load AI models. Ensure they are available in the /models directory.");
+        console.error("Error loading model:", err);
+        alert("Failed to load AI model.");
     }
 }
 
-// 3. Detection & Tracking Loop
-async function detectLoop(displaySize) {
-    if (!isModelsLoaded) return;
+// Helper: Calculate Intersection over Union (IoU)
+function getIoU(box1, box2) {
+    const xA = Math.max(box1[0], box2[0]);
+    const yA = Math.max(box1[1], box2[1]);
+    const xB = Math.min(box1[0] + box1[2], box2[0] + box2[2]);
+    const yB = Math.min(box1[1] + box1[3], box2[1] + box2[3]);
+    
+    const interArea = Math.max(0, xB - xA) * Math.max(0, yB - yA);
+    if (interArea === 0) return 0;
+    
+    const box1Area = box1[2] * box1[3];
+    const box2Area = box2[2] * box2[3];
+    return interArea / (box1Area + box2Area - interArea);
+}
 
-    // Detect all faces with landmarks and descriptors
-    const detections = await faceapi.detectAllFaces(video).withFaceLandmarks().withFaceDescriptors();
-    const resizedDetections = faceapi.resizeResults(detections, displaySize);
+// 3. Detection & Tracking Loop
+async function detectLoop() {
+    if (!objectModel) return;
+
+    const predictions = await objectModel.detect(video);
+    // Filter to only track people
+    const people = predictions.filter(p => p.class === 'person');
     
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    let targetFace = null;
+    let targetBox = null;
     let targetColor = COLOR_DETECTED;
 
-    if (resizedDetections.length > 0) {
-        if (lockedFaceDescriptor) {
-            // MODE A: Locked Mode
-            const faceMatcher = new faceapi.FaceMatcher([new faceapi.LabeledFaceDescriptors('locked', [lockedFaceDescriptor])], 0.6);
-            
-            let bestMatchObj = null;
+    if (people.length > 0) {
+        if (lockedBox) {
+            // MODE A: Locked Mode (Spatial Tracking via IoU)
             let bestMatchBox = null;
+            let highestIoU = 0;
             
-            resizedDetections.forEach(det => {
-                const match = faceMatcher.findBestMatch(det.descriptor);
-                if (match.label === 'locked') {
-                    bestMatchObj = det;
-                    bestMatchBox = det.detection.box;
-                } else {
-                    // Draw non-matching faces as standard blue
-                    drawBox(ctx, det.detection.box, COLOR_DETECTED);
+            people.forEach(person => {
+                const iou = getIoU(lockedBox, person.bbox);
+                if (iou > highestIoU) {
+                    highestIoU = iou;
+                    bestMatchBox = person.bbox;
                 }
             });
 
-            if (bestMatchBox) {
-                targetFace = bestMatchBox;
-                targetColor = COLOR_LOCKED;
-                drawBox(ctx, bestMatchBox, COLOR_LOCKED, 'Locked Target');
-            }
+            // Draw boxes
+            people.forEach(person => {
+                if (person.bbox === bestMatchBox && highestIoU > 0.1) {
+                    targetBox = bestMatchBox;
+                    lockedBox = bestMatchBox; // Update lock to new position
+                    targetColor = COLOR_LOCKED;
+                    drawBox(ctx, person.bbox, COLOR_LOCKED, 'Locked Target');
+                } else {
+                    drawBox(ctx, person.bbox, COLOR_DETECTED);
+                }
+            });
         } else {
             // MODE B: Nearest Mode (Largest Box Area)
             let largestArea = 0;
             let nearestIdx = 0;
             
-            resizedDetections.forEach((det, idx) => {
-                const box = det.detection.box;
-                const area = box.width * box.height;
+            people.forEach((person, idx) => {
+                const box = person.bbox;
+                const area = box[2] * box[3]; // width * height
                 if (area > largestArea) {
                     largestArea = area;
                     nearestIdx = idx;
@@ -135,10 +142,10 @@ async function detectLoop(displaySize) {
             });
 
             // Draw boxes
-            resizedDetections.forEach((det, idx) => {
-                const box = det.detection.box;
+            people.forEach((person, idx) => {
+                const box = person.bbox;
                 if (idx === nearestIdx) {
-                    targetFace = box;
+                    targetBox = box;
                     targetColor = COLOR_NEAREST;
                     drawBox(ctx, box, COLOR_NEAREST, 'Nearest Target');
                 } else {
@@ -148,75 +155,69 @@ async function detectLoop(displaySize) {
         }
 
         // Calculate offset and send data
-        if (targetFace) {
-            const centerX = targetFace.x + (targetFace.width / 2);
-            const videoCenterX = displaySize.width / 2;
-            const offsetX = Math.round(centerX - videoCenterX); // Positive means target is to the right
+        if (targetBox) {
+            const centerX = targetBox[0] + (targetBox[2] / 2);
+            const videoCenterX = canvas.width / 2;
+            const offsetX = Math.round(centerX - videoCenterX); // Positive = target is to the right
             
             sendTrackingData(offsetX);
             telemetryX.textContent = `${offsetX} px`;
         }
     }
 
-    // Assign current detections to canvas for click handling
-    canvas.currentDetections = resizedDetections;
+    // Save detections for click events
+    canvas.currentDetections = people;
 
-    requestAnimationFrame(() => detectLoop(displaySize));
+    requestAnimationFrame(() => detectLoop());
 }
 
 // Draw Helper
-function drawBox(ctx, box, color, label = '') {
+function drawBox(ctx, bbox, color, label = '') {
+    const [x, y, width, height] = bbox;
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
-    ctx.strokeRect(box.x, box.y, box.width, box.height);
+    ctx.strokeRect(x, y, width, height);
     
     if (label) {
         ctx.fillStyle = color;
         ctx.font = '16px Outfit';
         const textWidth = ctx.measureText(label).width;
-        ctx.fillRect(box.x, box.y - 25, textWidth + 10, 25);
+        ctx.fillRect(x, y - 25, textWidth + 10, 25);
         ctx.fillStyle = '#000';
-        ctx.fillText(label, box.x + 5, box.y - 7);
+        ctx.fillText(label, x + 5, y - 7);
     }
 }
 
 // 4. Interaction (Click to Lock)
 canvas.addEventListener('click', (e) => {
     const rect = canvas.getBoundingClientRect();
-    // Calculate click scale relative to actual canvas resolution
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     
     const clickX = (e.clientX - rect.left) * scaleX;
     const clickY = (e.clientY - rect.top) * scaleY;
 
-    const detections = canvas.currentDetections || [];
+    const people = canvas.currentDetections || [];
     
-    for (const det of detections) {
-        const box = det.detection.box;
-        if (clickX >= box.x && clickX <= box.x + box.width &&
-            clickY >= box.y && clickY <= box.y + box.height) {
-            // Clicked inside this bounding box!
-            setLockedMode(det.descriptor);
+    for (const person of people) {
+        const [x, y, w, h] = person.bbox;
+        if (clickX >= x && clickX <= x + w && clickY >= y && clickY <= y + h) {
+            setLockedMode(person.bbox);
             break;
         }
     }
 });
 
-function setLockedMode(descriptor) {
-    lockedFaceDescriptor = descriptor;
-    
-    // Update UI
+function setLockedMode(bbox) {
+    lockedBox = bbox;
     currentModeBadge.textContent = 'Locked (Mode A)';
     currentModeBadge.className = 'mode-badge mode-a';
-    modeDesc.textContent = 'Tracking a specific person. Ignore others.';
+    modeDesc.textContent = 'Tracking a specific person via spatial tracking. Ignore others.';
     btnClearLock.disabled = false;
 }
 
 btnClearLock.addEventListener('click', () => {
-    lockedFaceDescriptor = null;
-    
-    // Update UI
+    lockedBox = null;
     currentModeBadge.textContent = 'Nearest (Mode B)';
     currentModeBadge.className = 'mode-badge mode-b';
     modeDesc.textContent = 'Tracking the closest person. Click any bounding box to lock onto a target.';
@@ -283,7 +284,6 @@ function sendTrackingData(offsetX) {
         sendsInLastSecond++;
     }
 
-    // Update telemetry FPS every second
     if (now - lastFpsUpdate >= 1000) {
         telemetryFps.textContent = `${sendsInLastSecond} Hz`;
         sendsInLastSecond = 0;
