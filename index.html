@@ -6,12 +6,10 @@
     <title>FaceVision | Face Tracking</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <!-- TensorFlow.js & COCO-SSD -->
+    <!-- TensorFlow.js & BlazeFace -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
-    <!-- Paho MQTT Client for Cloud IoT -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js" type="text/javascript"></script>
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
     <div class="app-container">
@@ -21,7 +19,7 @@
                 <span class="icon">👁️</span>
                 <h1>Face<span>Vision</span></h1>
             </div>
-            <p class="subtitle">Cloud IoT Face Tracking (No Laptop Required)</p>
+            <p class="subtitle">Offline IoT Face Tracking (Direct ESP Connection)</p>
         </header>
 
         <!-- Main Content -->
@@ -41,16 +39,16 @@
 
             <!-- Control Panel -->
             <aside class="control-panel glass-panel">
-                <!-- MQTT Connection -->
+                <!-- WebSocket Connection -->
                 <div class="panel-section">
-                    <h2>Cloud Connection</h2>
+                    <h2>Local ESP Connection</h2>
                     <div class="input-group">
-                        <input type="text" id="ws-url" value="broker.hivemq.com" readonly style="color: #888;">
+                        <input type="text" id="ws-url" value="ws://192.168.4.1:81/">
                         <button id="btn-connect" class="btn primary">Connect</button>
                     </div>
                     <div class="status-indicator">
                         <span id="ws-status-dot" class="dot disconnected"></span>
-                        <span id="ws-status-text">Disconnected from Cloud</span>
+                        <span id="ws-status-text">Disconnected from ESP</span>
                     </div>
                 </div>
 
@@ -111,5 +109,14 @@
     </div>
     
     <script src="script.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(registration => console.log('ServiceWorker registered'))
+                    .catch(error => console.log('ServiceWorker registration failed: ', error));
+            });
+        }
+    </script>
 </body>
 </html>

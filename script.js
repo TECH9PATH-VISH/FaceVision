@@ -22,9 +22,8 @@ const deadzoneVal = document.getElementById('deadzone-val');
 const wsLogs = document.getElementById('ws-logs');
 
 // State Variables
-let mqttClient = null;
-let isMqttConnected = false;
-const MQTT_TOPIC = "yantriksha/facevision/servo";
+let wsClient = null;
+let isWsConnected = false;
 let objectModel = null;
 let lockedBox = null; 
 let lastSendTime = 0;
@@ -348,10 +347,10 @@ btnClearLock.addEventListener('click', () => {
     btnClearLock.disabled = true;
 });
 
-// 5. Cloud MQTT Integration & Payload Logging
+// 5. Local ESP8266 WebSocket Integration & Payload Logging
 btnConnect.addEventListener('click', () => {
-    if (isMqttConnected && mqttClient) {
-        mqttClient.disconnect();
+    if (isWsConnected && wsClient) {
+        wsClient.close();
         return;
     }
 
@@ -359,48 +358,35 @@ btnConnect.addEventListener('click', () => {
     btnConnect.disabled = true;
 
     try {
-        // Generate a random client ID
-        const clientId = "FaceVisionWeb-" + Math.floor(Math.random() * 10000);
-        
-        // Connect to HiveMQ Public Broker over Secure WebSockets (port 8884)
-        mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8884, clientId);
+        wsClient = new WebSocket(wsUrlInput.value);
 
-        mqttClient.onConnectionLost = (responseObject) => {
-            isMqttConnected = false;
+        wsClient.onopen = () => {
+            isWsConnected = true;
+            wsStatusDot.className = 'dot connected';
+            wsStatusText.textContent = 'Connected to ESP8266';
+            btnConnect.textContent = 'Disconnect';
+            btnConnect.disabled = false;
+            console.log("Connected to ESP8266 WebSocket!");
+        };
+
+        wsClient.onclose = () => {
+            isWsConnected = false;
             wsStatusDot.className = 'dot disconnected';
-            wsStatusText.textContent = 'Disconnected from Cloud';
+            wsStatusText.textContent = 'Disconnected from ESP';
             btnConnect.textContent = 'Connect';
             btnConnect.disabled = false;
-            console.log("MQTT Connection Lost:", responseObject.errorMessage);
+            console.log("WebSocket Connection Closed.");
         };
 
-        const connectOptions = {
-            useSSL: true,
-            onSuccess: () => {
-                isMqttConnected = true;
-                wsStatusDot.className = 'dot connected';
-                wsStatusText.textContent = 'Connected to Cloud';
-                btnConnect.textContent = 'Disconnect';
-                btnConnect.disabled = false;
-                console.log("Connected to MQTT Broker!");
-            },
-            onFailure: (error) => {
-                isMqttConnected = false;
-                wsStatusDot.className = 'dot disconnected';
-                wsStatusText.textContent = 'Connection Failed';
-                btnConnect.textContent = 'Connect';
-                btnConnect.disabled = false;
-                console.error("MQTT Connection Failed:", error.errorMessage);
-                alert("Failed to connect to Cloud MQTT Broker.");
-            }
+        wsClient.onerror = (error) => {
+            console.error("WebSocket Error:", error);
+            // Error handling will trigger onclose automatically
         };
-
-        mqttClient.connect(connectOptions);
     } catch (e) {
-        console.error('MQTT Exception:', e);
+        console.error('WebSocket Exception:', e);
         btnConnect.textContent = 'Connect';
         btnConnect.disabled = false;
-        alert("Error initializing MQTT connection");
+        alert("Error initializing WebSocket connection. Check the URL.");
     }
 });
 
@@ -414,11 +400,9 @@ function sendTrackingData(payloadObj) {
     if (now - lastSendTime >= sendIntervalMs) {
         const payloadStr = JSON.stringify(payloadObj);
 
-        // Only actually send if connected to Cloud
-        if (isMqttConnected && mqttClient) {
-            const message = new Paho.MQTT.Message(payloadStr);
-            message.destinationName = MQTT_TOPIC;
-            mqttClient.send(message);
+        // Only actually send if connected to ESP
+        if (isWsConnected && wsClient && wsClient.readyState === WebSocket.OPEN) {
+            wsClient.send(payloadStr);
         }
         
         logPayload(payloadStr);
