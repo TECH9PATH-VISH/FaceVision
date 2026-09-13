@@ -85,13 +85,13 @@ async function setupWebcam() {
     }
 }
 
-// 2. Load COCO-SSD model
+// 2. Load BlazeFace model
 async function loadModels() {
     try {
-        objectModel = await cocoSsd.load();
+        objectModel = await blazeface.load();
         loadingOverlay.style.opacity = '0';
         setTimeout(() => loadingOverlay.style.display = 'none', 300);
-        console.log("COCO-SSD loaded successfully");
+        console.log("BlazeFace loaded successfully");
     } catch (err) {
         console.error("Error loading model:", err);
         alert("Failed to load AI model.");
@@ -161,15 +161,21 @@ async function detectLoop() {
 
     let predictions = [];
     try {
-        predictions = await objectModel.detect(video);
+        predictions = await objectModel.estimateFaces(video, false);
     } catch (e) {
         console.error("TFJS Detection Error:", e);
         requestAnimationFrame(() => detectLoop());
         return;
     }
 
-    // Filter to only track people
-    const people = predictions.filter(p => p.class === 'person');
+    // Map BlazeFace predictions to our existing bbox format: [x, y, width, height]
+    const people = predictions.map(p => {
+        const x = p.topLeft[0];
+        const y = p.topLeft[1];
+        const width = p.bottomRight[0] - x;
+        const height = p.bottomRight[1] - y;
+        return { bbox: [x, y, width, height], class: 'face' };
+    });
     
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
