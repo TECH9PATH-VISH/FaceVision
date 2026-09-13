@@ -24,6 +24,7 @@ const wsLogs = document.getElementById('ws-logs');
 // State Variables
 let wsClient = null;
 let isWsConnected = false;
+let useFrontCamera = true;
 let objectModel = null;
 let lockedBox = null; 
 let lastSendTime = 0;
@@ -69,8 +70,12 @@ async function init() {
 // 1. Webcam Setup
 async function setupWebcam() {
     try {
+        if (video.srcObject) {
+            video.srcObject.getTracks().forEach(track => track.stop());
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+            video: { facingMode: useFrontCamera ? 'user' : 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
             audio: false
         });
         video.srcObject = stream;
@@ -514,6 +519,14 @@ function stopRecording() {
     btnRecord.classList.remove('recording');
     recordText.textContent = 'Start Recording';
 }
+
+const btnSwitchCam = document.getElementById('btn-switch-cam');
+btnSwitchCam.addEventListener('click', async () => {
+    btnSwitchCam.disabled = true;
+    useFrontCamera = !useFrontCamera;
+    await setupWebcam();
+    btnSwitchCam.disabled = false;
+});
 
 // Start
 init();

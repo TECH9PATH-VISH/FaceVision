@@ -55,9 +55,14 @@
                 <!-- Camera Control -->
                 <div class="panel-section">
                     <h2>Camera Control</h2>
-                    <button id="btn-record" class="btn secondary">
-                        <span class="record-dot"></span> <span id="record-text">Start Recording</span>
-                    </button>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button id="btn-record" class="btn secondary" style="flex: 1;">
+                            <span class="record-dot"></span> <span id="record-text">Start Recording</span>
+                        </button>
+                        <button id="btn-switch-cam" class="btn secondary" style="flex: 1;">
+                            <span>🔄 Switch Camera</span>
+                        </button>
+                    </div>
                 </div>
 
                 <!-- Tracking Modes -->
