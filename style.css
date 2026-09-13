@@ -406,7 +406,12 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 /* Responsive */
-@media (max-width: 900px) {
+@media (max-width: 1200px), (orientation: portrait) {
+    body {
+        height: auto;
+        min-height: 100vh;
+        align-items: flex-start;
+    }
     .app-container {
         height: auto;
         min-height: 100vh;
@@ -428,11 +433,14 @@ input[type=range]::-webkit-slider-runnable-track {
         overflow: visible;
     }
     .camera-section {
-        height: 55vh;
-        min-height: 350px;
+        flex: none;
+        width: 100%;
+        height: 60vh;
+        min-height: 400px;
         border-radius: 12px;
     }
     .control-panel {
+        flex: none;
         width: 100%;
         max-height: none;
         overflow: visible;
