@@ -448,6 +448,11 @@ input[type=range]::-webkit-slider-runnable-track {
         border-radius: 12px;
     }
     .input-group {
-        flex-direction: column;
+        flex-direction: column !important;
+        width: 100%;
+    }
+    .input-group .btn {
+        width: 100%;
+        margin-top: 5px;
     }
 }
