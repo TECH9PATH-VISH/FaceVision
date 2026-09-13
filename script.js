@@ -22,7 +22,9 @@ const deadzoneVal = document.getElementById('deadzone-val');
 const wsLogs = document.getElementById('ws-logs');
 
 // State Variables
-let socket = null;
+let mqttClient = null;
+let isMqttConnected = false;
+const MQTT_TOPIC = "yantriksha/facevision/servo";
 let objectModel = null;
 let lockedBox = null; 
 let lastSendTime = 0;
@@ -316,49 +318,59 @@ btnClearLock.addEventListener('click', () => {
     btnClearLock.disabled = true;
 });
 
-// 5. WebSocket Integration & Payload Logging
+// 5. Cloud MQTT Integration & Payload Logging
 btnConnect.addEventListener('click', () => {
-    if (socket && socket.readyState === WebSocket.OPEN) {
-        socket.close();
+    if (isMqttConnected && mqttClient) {
+        mqttClient.disconnect();
         return;
     }
-
-    const url = wsUrlInput.value.trim();
-    if (!url) return;
 
     btnConnect.textContent = 'Connecting...';
     btnConnect.disabled = true;
 
     try {
-        socket = new WebSocket(url);
+        // Generate a random client ID
+        const clientId = "FaceVisionWeb-" + Math.floor(Math.random() * 10000);
         
-        socket.onopen = () => {
-            wsStatusDot.className = 'dot connected';
-            wsStatusText.textContent = 'Connected';
-            btnConnect.textContent = 'Disconnect';
-            btnConnect.disabled = false;
-        };
+        // Connect to HiveMQ Public Broker over Secure WebSockets (port 8884)
+        mqttClient = new Paho.MQTT.Client("broker.hivemq.com", 8884, clientId);
 
-        socket.onclose = () => {
+        mqttClient.onConnectionLost = (responseObject) => {
+            isMqttConnected = false;
             wsStatusDot.className = 'dot disconnected';
-            wsStatusText.textContent = 'Disconnected';
+            wsStatusText.textContent = 'Disconnected from Cloud';
             btnConnect.textContent = 'Connect';
             btnConnect.disabled = false;
-            socket = null;
+            console.log("MQTT Connection Lost:", responseObject.errorMessage);
         };
 
-        socket.onerror = (error) => {
-            console.error('WebSocket Error:', error);
-            wsStatusDot.className = 'dot disconnected';
-            wsStatusText.textContent = 'Error';
-            btnConnect.textContent = 'Connect';
-            btnConnect.disabled = false;
+        const connectOptions = {
+            useSSL: true,
+            onSuccess: () => {
+                isMqttConnected = true;
+                wsStatusDot.className = 'dot connected';
+                wsStatusText.textContent = 'Connected to Cloud';
+                btnConnect.textContent = 'Disconnect';
+                btnConnect.disabled = false;
+                console.log("Connected to MQTT Broker!");
+            },
+            onFailure: (error) => {
+                isMqttConnected = false;
+                wsStatusDot.className = 'dot disconnected';
+                wsStatusText.textContent = 'Connection Failed';
+                btnConnect.textContent = 'Connect';
+                btnConnect.disabled = false;
+                console.error("MQTT Connection Failed:", error.errorMessage);
+                alert("Failed to connect to Cloud MQTT Broker.");
+            }
         };
+
+        mqttClient.connect(connectOptions);
     } catch (e) {
-        console.error('WebSocket Exception:', e);
+        console.error('MQTT Exception:', e);
         btnConnect.textContent = 'Connect';
         btnConnect.disabled = false;
-        alert("Invalid WebSocket URL");
+        alert("Error initializing MQTT connection");
     }
 });
 
@@ -372,9 +384,11 @@ function sendTrackingData(payloadObj) {
     if (now - lastSendTime >= sendIntervalMs) {
         const payloadStr = JSON.stringify(payloadObj);
 
-        // Only actually send if connected
-        if (socket && socket.readyState === WebSocket.OPEN) {
-            socket.send(payloadStr);
+        // Only actually send if connected to Cloud
+        if (isMqttConnected && mqttClient) {
+            const message = new Paho.MQTT.Message(payloadStr);
+            message.destinationName = MQTT_TOPIC;
+            mqttClient.send(message);
         }
         
         logPayload(payloadStr);
