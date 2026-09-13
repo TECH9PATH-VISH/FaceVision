@@ -62,6 +62,8 @@ async function init() {
     // The video is already playing by the time models load, so we set dimensions and start immediately
     canvas.width = video.videoWidth || 640;
     canvas.height = video.videoHeight || 480;
+    video.width = canvas.width;
+    video.height = canvas.height;
     requestAnimationFrame(() => detectLoop());
 }
 
@@ -152,6 +154,9 @@ async function detectLoop() {
     if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
+        // TFJS requires explicit width/height attributes on the video element for mobile
+        video.width = video.videoWidth;
+        video.height = video.videoHeight;
     }
 
     let predictions = [];
