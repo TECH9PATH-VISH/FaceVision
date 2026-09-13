@@ -69,7 +69,7 @@ async function init() {
 async function setupWebcam() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user', width: 640, height: 480 },
+            video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
             audio: false
         });
         video.srcObject = stream;
@@ -146,6 +146,12 @@ async function detectLoop() {
     if (video.readyState < 2 || video.videoWidth === 0) {
         requestAnimationFrame(() => detectLoop());
         return;
+    }
+
+    // Sync canvas size to video size (critical for mobile where aspect ratio varies)
+    if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
     }
 
     let predictions = [];
@@ -282,14 +288,24 @@ function drawBox(ctx, bbox, color, label = '') {
     }
 }
 
-// 4. Interaction (Click to Lock)
-canvas.addEventListener('click', (e) => {
+// 4. Interaction (Click/Touch to Lock)
+function handleInteract(e) {
+    if (e.type === 'touchstart') e.preventDefault(); // Prevent scrolling
+    
     const rect = canvas.getBoundingClientRect();
     const scaleX = canvas.width / rect.width;
     const scaleY = canvas.height / rect.height;
     
-    const clickX = (e.clientX - rect.left) * scaleX;
-    const clickY = (e.clientY - rect.top) * scaleY;
+    let clientX = e.clientX;
+    let clientY = e.clientY;
+    
+    if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+    }
+    
+    const clickX = (clientX - rect.left) * scaleX;
+    const clickY = (clientY - rect.top) * scaleY;
 
     const people = canvas.currentDetections || [];
     
@@ -300,7 +316,10 @@ canvas.addEventListener('click', (e) => {
             break;
         }
     }
-});
+}
+
+canvas.addEventListener('click', handleInteract);
+canvas.addEventListener('touchstart', handleInteract, {passive: false});
 
 function setLockedMode(bbox) {
     lockedBox = bbox;
