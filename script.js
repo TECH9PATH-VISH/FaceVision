@@ -21,11 +21,12 @@ const deadzoneSlider = document.getElementById('deadzone-slider');
 const deadzoneVal = document.getElementById('deadzone-val');
 const wsLogs = document.getElementById('ws-logs');
 
-// State Variables
 let wsClient = null;
 let isWsConnected = false;
 let useFrontCamera = true;
-let objectModel = null;
+let faceModel = null;
+let bodyModel = null;
+let currentTrackingMode = 'face';
 let lockedBox = null; 
 let lastSendTime = 0;
 let mediaRecorder = null;
@@ -89,13 +90,19 @@ async function setupWebcam() {
     }
 }
 
-// 2. Load BlazeFace model
+// 2. Load AI Models
 async function loadModels() {
     try {
-        objectModel = await blazeface.load();
+        const loadingText = document.querySelector('#loading p');
+        loadingText.textContent = 'Loading Face AI...';
+        faceModel = await blazeface.load();
+        
+        loadingText.textContent = 'Loading Body AI...';
+        bodyModel = await cocoSsd.load();
+
         loadingOverlay.style.opacity = '0';
         setTimeout(() => loadingOverlay.style.display = 'none', 300);
-        console.log("BlazeFace loaded successfully");
+        console.log("AI models loaded successfully");
     } catch (err) {
         console.error("Error loading model:", err);
         alert("Failed to load AI model.");
@@ -146,7 +153,7 @@ function drawTargetLine(ctx, targetCenterX, targetCenterY, color) {
 
 // 3. Detection & Tracking Loop
 async function detectLoop() {
-    if (!objectModel) return;
+    if ((currentTrackingMode === 'face' && !faceModel) || (currentTrackingMode === 'body' && !bodyModel)) return;
 
     // Safety check: Prevent TFJS crash if webcam frames aren't fully initialized
     if (video.readyState < 2 || video.videoWidth === 0) {
@@ -163,23 +170,31 @@ async function detectLoop() {
         video.height = video.videoHeight;
     }
 
-    let predictions = [];
+    let people = [];
     try {
-        predictions = await objectModel.estimateFaces(video, false);
+        if (currentTrackingMode === 'face') {
+            const predictions = await faceModel.estimateFaces(video, false);
+            people = predictions.map(p => {
+                const x = p.topLeft[0];
+                const y = p.topLeft[1];
+                const width = p.bottomRight[0] - x;
+                const height = p.bottomRight[1] - y;
+                return { bbox: [x, y, width, height], class: 'face' };
+            });
+        } else {
+            const predictions = await bodyModel.detect(video);
+            // Filter only 'person' class, lower confidence threshold implicitly handled by tfjs or we just map it
+            people = predictions
+                .filter(p => p.class === 'person' && p.score > 0.3) // 30% confidence is enough for bodies
+                .map(p => {
+                    return { bbox: [p.bbox[0], p.bbox[1], p.bbox[2], p.bbox[3]], class: 'person' };
+                });
+        }
     } catch (e) {
         console.error("TFJS Detection Error:", e);
         requestAnimationFrame(() => detectLoop());
         return;
     }
-
-    // Map BlazeFace predictions to our existing bbox format: [x, y, width, height]
-    const people = predictions.map(p => {
-        const x = p.topLeft[0];
-        const y = p.topLeft[1];
-        const width = p.bottomRight[0] - x;
-        const height = p.bottomRight[1] - y;
-        return { bbox: [x, y, width, height], class: 'face' };
-    });
     
     const ctx = canvas.getContext('2d');
     ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -526,6 +541,13 @@ btnSwitchCam.addEventListener('click', async () => {
     useFrontCamera = !useFrontCamera;
     await setupWebcam();
     btnSwitchCam.disabled = false;
+});
+
+const aiModelSelect = document.getElementById('ai-model-select');
+aiModelSelect.addEventListener('change', (e) => {
+    currentTrackingMode = e.target.value;
+    lockedBox = null; // Clear lock when switching AI
+    btnClearLock.click(); // Reset UI
 });
 
 // Start

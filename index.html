@@ -6,9 +6,10 @@
     <title>FaceVision | Face Tracking</title>
     <!-- Google Fonts -->
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
-    <!-- TensorFlow.js & BlazeFace -->
+    <!-- TensorFlow.js, BlazeFace, COCO-SSD -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/blazeface"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
     <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
@@ -67,7 +68,14 @@
 
                 <!-- Tracking Modes -->
                 <div class="panel-section">
-                    <h2>Tracking Mode</h2>
+                    <h2>Tracking AI Selection</h2>
+                    <div style="margin-bottom: 15px;">
+                        <select id="ai-model-select" style="width: 100%; padding: 8px; border-radius: 6px; background: rgba(0,0,0,0.3); color: white; border: 1px solid var(--panel-border); font-family: 'Outfit', sans-serif;">
+                            <option value="face">Face AI (Close-up / Selfies)</option>
+                            <option value="body">Body AI (Far away / Reels)</option>
+                        </select>
+                    </div>
+                    <h2>Targeting Mode</h2>
                     <div class="mode-info">
                         <span id="current-mode" class="mode-badge mode-b">Nearest (Mode B)</span>
                         <p id="mode-desc">Tracking the closest person. Click any bounding box to lock onto a target.</p>
